@@ -1,48 +1,70 @@
 # ESP Board Manager 技术文档
 
----
+***
 
 ## 1. 组件架构概述
 
-### 1.1 系统定位
+### 1.1 系统框图
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Application Layer                      │
-│                   (用户应用程序)                          │
-└─────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                  ESP Board Manager                       │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │        esp_board_manager.h (顶层API)            │    │
-│  └─────────────────────────────────────────────────┘    │
-│                            │                             │
-│        ┌───────────────────┴───────────────────┐        │
-│        ▼                                       ▼        │
-│  ┌─────────────────┐               ┌─────────────────┐ │
-│  │ esp_board_device.h │             │esp_board_periph.h│ │
-│  │   (设备管理层)    │               │  (外设管理层)    │ │
-│  └────────┬────────┘               └────────┬────────┘ │
-│           │                                  │          │
-└───────────┼──────────────────────────────────┼──────────┘
-            │                                  │
-            ▼                                  ▼
-┌─────────────────────────┐    ┌─────────────────────────┐
-│   Devices (设备层)       │    │   Peripherals (外设层)  │
-│  - dev_audio_codec      │    │  - periph_i2c           │
-│  - dev_display_lcd      │    │  - periph_i2s           │
-│  - dev_camera           │    │  - periph_spi           │
-│  - dev_fs_fat          │    │  - periph_gpio          │
-│  - dev_button          │    │  - periph_ledc          │
-└─────────────────────────┘    └─────────────────────────┘
-            │                                  │
-            ▼                                  ▼
-┌─────────────────────────────────────────────────────────┐
-│              ESP-IDF Driver Layer                       │
-│         (driver/gpio, driver/i2c, driver/spi...)        │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Application Layer
+        A[用户应用程序]
+    end
+    
+    subgraph ESP Board Manager
+        B1[顶层API
+esp_board_manager.h]
+        B2[设备管理层
+esp_board_device.h]
+        B3[外设管理层
+esp_board_periph.h]
+    end
+    
+    subgraph Devices 设备层
+        D1[display_lcd]
+        D2[audio_codec]
+        D3[dev_camera]
+        D4[dev_fs_fat]
+    end
+    
+    subgraph Peripherals 外设层
+        P1[i2c_master]
+        P2[i2s_audio]
+        P3[spi_master]
+        P4[gpio_ctrl]
+    end
+    
+    subgraph ESP-IDF Driver Layer
+        DR1[driver/gpio]
+        DR2[driver/i2c]
+        DR3[driver/i2s]
+        DR4[driver/spi]
+        DR5[esp_lcd]
+    end
+    
+    A --> B1
+    B1 --> B2
+    B1 --> B3
+    B2 --> D1
+    B2 --> D2
+    B2 --> D3
+    B2 --> D4
+    B3 --> P1
+    B3 --> P2
+    B3 --> P3
+    B3 --> P4
+    D1 --> DR1
+    D1 --> DR5
+    D2 --> DR2
+    D2 --> DR3
+    D3 --> DR2
+    D3 --> DR4
+    D4 --> DR4
+    P1 --> DR2
+    P2 --> DR3
+    P3 --> DR4
+    P4 --> DR1
 ```
 
 ### 1.2 核心设计理念
@@ -53,7 +75,6 @@
   - 具有类型 (type) 和角色 (role)
   - 可以被多个设备共享复用
   - 例如：`i2c_master`、`i2s_audio_out`、`gpio_pa_control`
-
 - **设备 (Device)**：具体功能模块，如音频编解码器、LCD 显示屏、摄像头等
   - 依赖一个或多个外设
   - 通常包含特定芯片 (chip) 的驱动配置
@@ -61,39 +82,47 @@
 
 ### 1.3 配置驱动的生成流程
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                      开发板配置阶段                           │
-│                                                              │
-│  boards/<board_name>/                                       │
-│  ├── board_info.yaml        (板级基本信息)                   │
-│  ├── board_peripherals.yaml (外设配置)                       │
-│  ├── board_devices.yaml    (设备配置)                       │
-│  └── setup_device.c        (可选的自定义初始化代码)          │
-└──────────────────────────────────────────────────────────────┘
-                              │
-                              ▼ (cmake 阶段调用生成器)
-┌──────────────────────────────────────────────────────────────┐
-│                      代码生成阶段                            │
-│                                                              │
-│  generators/                   gen_bmgr_config_codes.py     │
-│  ├── device_parser.py         └── 解析 YAML 配置             │
-│  ├── peripheral_parser.py     └── 生成 C 结构体              │
-│  └── config_generator.py     └── 输出头文件                 │
-└──────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌──────────────────────────────────────────────────────────────┐
-│                      编译阶段                                │
-│                                                              │
-│  生成文件：                                                 │
-│  ├── gen_board_device_handles.c  (设备注册表)               │
-│  ├── gen_board_periph_handles.c  (外设注册表)               │
-│  └── board_info.c               (板级信息)                  │
-└──────────────────────────────────────────────────────────────┘
+#### 阶段1：开发板配置
+
+```mermaid
+flowchart TD
+    A[boards/&lt;board_name&gt;/]
+    A --> A1[board_info.yaml\n板级基本信息]
+    A --> A2[board_peripherals.yaml\n外设配置]
+    A --> A3[board_devices.yaml\n设备配置]
+    A --> A4[setup_device.c\n可选自定义初始化代码]
+    A -->|输出| B[YAML 配置文件]
 ```
 
----
+#### 阶段2：代码生成 (CMake阶段)
+
+```mermaid
+flowchart TD
+    A[YAML 配置文件] --> B[gen_bmgr_config_codes.py]
+    B --> B1[device_parser.py\n解析设备配置]
+    B --> B2[peripheral_parser.py\n解析外设配置]
+    B --> B3[config_generator.py\n生成代码]
+    B --> C[生成中间产物]
+    C --> C1[解析 YAML 配置]
+    C --> C2[生成 C 结构体]
+    C --> C3[输出头文件]
+```
+
+#### 阶段3：编译阶段
+
+```mermaid
+flowchart TD
+    A[生成的头文件] --> B[编译阶段]
+    B --> B1[gen_board_device_handles.c\n设备注册表]
+    B --> B2[gen_board_periph_handles.c\n外设注册表]
+    B --> B3[board_info.c\n板级信息]
+    B --> C[最终输出]
+    C --> C1[设备句柄数组]
+    C --> C2[外设句柄数组]
+    C --> C3[板级信息结构体]
+```
+
+***
 
 ## 2. 核心数据结构
 
@@ -190,7 +219,7 @@ typedef esp_err_t (*esp_board_periph_init_func)(void *cfg, int cfg_size, void **
 typedef esp_err_t (*esp_board_periph_deinit_func)(void *periph_handle);
 ```
 
----
+***
 
 ## 3. 顶层API管理机制
 
@@ -301,58 +330,39 @@ esp_err_t esp_board_manager_print_board_info(void);
 
 ### 3.2 API调用流程图
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                   esp_board_manager_init()                      │
-└─────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              esp_board_periph_init_all()                        │
-│                                                                 │
-│  遍历 g_esp_board_peripherals[] (生成器产生)                    │
-│  对每个外设调用 esp_board_periph_init(name)                      │
-│                                                                 │
-│  内部流程：                                                     │
-│  1. 查找外设描述符 (通过 name 在链表中查找)                      │
-│  2. 查找外设条目 (通过 type+role 匹配 init 函数)                │
-│  3. 调用 init(cfg, cfg_size, &handle)                           │
-│  4. 创建外设列表节点，加入链表                                   │
-│  5. ref_count++                                                 │
-└─────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              esp_board_device_init_all()                        │
-│                                                                 │
-│  遍历 g_esp_board_devices[] (生成器产生)                        │
-│  对每个设备调用 esp_board_device_init(name)                      │
-│                                                                 │
-│  内部流程：                                                     │
-│  1. 查找设备描述符 (通过 name 在链表中查找)                      │
-│  2. 检查电源依赖 (power_ctrl_device)                             │
-│  3. 调用 init(cfg, cfg_size, &handle)                           │
-│  4. 创建设备列表节点，加入链表                                   │
-│  5. ref_count++                                                 │
-└─────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    初始化完成                                    │
-│                                                                 │
-│  用户可通过以下方式获取句柄：                                   │
-│  - esp_board_manager_get_device_handle("audio_dac", &handle)    │
-│  - esp_board_manager_get_periph_handle("i2c_master", &handle)  │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A[esp_board_manager_init] --> B[esp_board_periph_init_all]
+    B --> B1[遍历 g_esp_board_peripherals]
+    B1 --> B2[esp_board_periph_init name]
+    B2 --> B3[查找外设描述符\n通过name在链表中查找]
+    B3 --> B4[查找外设条目\n通过type+role匹配init函数]
+    B4 --> B5[调用 init cfg cfg_size handle]
+    B5 --> B6[创建外设列表节点，加入链表]
+    B6 --> B7[ref_count++]
+    
+    B7 --> C[esp_board_device_init_all]
+    C --> C1[遍历 g_esp_board_devices]
+    C1 --> C2[esp_board_device_init name]
+    C2 --> C3[查找设备描述符\n通过name在链表中查找]
+    C3 --> C4[检查电源依赖\npower_ctrl_device]
+    C4 --> C5[调用 init cfg cfg_size handle]
+    C5 --> C6[创建设备列表节点，加入链表]
+    C6 --> C7[ref_count++]
+    
+    C7 --> D[初始化完成]
+    D --> D1[用户获取句柄]
+    D1 --> D2[esp_board_manager_get_device_handle\naudio_dac handle]
+    D1 --> D3[esp_board_manager_get_periph_handle\ni2c_master handle]
 ```
 
----
+***
 
 ## 4. 设备和外设的配置初始化
 
 ### 4.1 YAML配置文件结构
 
-#### board_info.yaml (板级信息)
+#### board\_info.yaml (板级信息)
 
 ```yaml
 board: esp32_p4_function_ev    # 板子标识名
@@ -362,7 +372,7 @@ description: "ESP32-P4 Function-EV Board"  # 描述
 manufacturer: "ESPRESSIF"        # 制造商
 ```
 
-#### board_peripherals.yaml (外设配置)
+#### board\_peripherals.yaml (外设配置)
 
 ```yaml
 peripherals:
@@ -400,7 +410,7 @@ peripherals:
       lane_bit_rate_mbps: 1000
 ```
 
-#### board_devices.yaml (设备配置)
+#### board\_devices.yaml (设备配置)
 
 ```yaml
 devices:
@@ -441,65 +451,49 @@ devices:
 
 ### 4.2 初始化时序图
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                      初始化时序图                             │
-└──────────────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant BM as esp_board_manager
+    participant PI as esp_board_periph_init_all
+    participant DI as esp_board_device_init_all
 
-时间 ──────────────────────────────────────────────────────────────────▶
-
-esp_board_manager_init()
-      │
-      ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Phase 1: 外设初始化                                           │
-│                                                              │
-│ 外设1: i2c_master                                           │
-│   ├─ esp_board_periph_init("i2c_master")                    │
-│   ├─ 查找描述符 (name="i2c_master", type="i2c", role=master)
-│   ├─ 查找初始化函数 (periph_i2s_init)                        │
-│   └─ 调用 init(cfg, cfg_size, &handle)                       │
-│                                                              │
-│ 外设2: i2s_audio_out                                        │
-│   ├─ esp_board_periph_init("i2s_audio_out")                  │
-│   ├─ 查找描述符 (name="i2s_audio_out", type="i2s")           │
-│   ├─ 查找初始化函数 (periph_i2s_init)                        │
-│   └─ 调用 init(cfg, cfg_size, &handle)                       │
-│                                                              │
-│ 外设3: gpio_pa_control                                       │
-│   └─ ...                                                    │
-└─────────────────────────────────────────────────────────────┘
-      │
-      ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Phase 2: 设备初始化                                           │
-│                                                              │
-│ 设备1: lcd_brightness (LEDC 背光)                             │
-│   ├─ 检查电源依赖 (无)                                        │
-│   ├─ esp_board_device_init("lcd_brightness")                 │
-│   └─ 调用 dev_ledc_ctrl_init(cfg, cfg_size, &handle)        │
-│                                                              │
-│ 设备2: display_lcd (DSI LCD)                                 │
-│   ├─ 检查电源依赖                                             │
-│   ├─ 先初始化 power_ctrl_device (ldo_mipi)                   │
-│   ├─ esp_board_device_init("display_lcd")                    │
-│   ├─ 查找 sub_type="dsi" 的初始化函数                         │
-│   └─ 调用 dev_display_lcd_sub_dsi_init(cfg, cfg_size, &handle)
-│                                                              │
-│ 设备3: audio_dac                                             │
-│   ├─ 检查电源依赖 (无)                                        │
-│   ├─ esp_board_device_init("audio_dac")                     │
-│   ├─ 查找 type="audio_codec" 的初始化函数                     │
-│   └─ 调用 dev_audio_codec_init(cfg, cfg_size, &handle)      │
-└─────────────────────────────────────────────────────────────┘
-      │
-      ▼
-┌─────────────────────────────┐
-│ 初始化完成                   │
-│                             │
-│ s_manager_initialized = true │
-│ ref_count 引用计数管理      │
-└─────────────────────────────┘
+    BM->>PI: Phase 1: 外设初始化
+    Note over PI: 外设1: i2c_master
+    PI->>PI: esp_board_periph_init("i2c_master")
+    PI->>PI: 查找描述符 (name, type, role)
+    PI->>PI: 查找初始化函数 (periph_i2c_init)
+    PI->>PI: 调用 init(cfg, cfg_size, handle)
+    
+    Note over PI: 外设2: i2s_audio_out
+    PI->>PI: esp_board_periph_init("i2s_audio_out")
+    PI->>PI: 查找描述符 (name, type)
+    PI->>PI: 查找初始化函数 (periph_i2s_init)
+    PI->>PI: 调用 init(cfg, cfg_size, handle)
+    
+    Note over PI: 外设3: gpio_pa_control
+    PI->>PI: ...
+    
+    BM->>DI: Phase 2: 设备初始化
+    Note over DI: 设备1: lcd_brightness
+    DI->>DI: 检查电源依赖 (无)
+    DI->>DI: esp_board_device_init("lcd_brightness")
+    DI->>DI: 调用 dev_ledc_ctrl_init(cfg, cfg_size, handle)
+    
+    Note over DI: 设备2: display_lcd
+    DI->>DI: 检查电源依赖
+    DI->>DI: 先初始化 power_ctrl_device (ldo_mipi)
+    DI->>DI: esp_board_device_init("display_lcd")
+    DI->>DI: 查找 sub_type="dsi" 的初始化函数
+    DI->>DI: 调用 dev_display_lcd_sub_dsi_init(cfg, cfg_size, handle)
+    
+    Note over DI: 设备3: audio_dac
+    DI->>DI: 检查电源依赖 (无)
+    DI->>DI: esp_board_device_init("audio_dac")
+    DI->>DI: 查找 type="audio_codec" 的初始化函数
+    DI->>DI: 调用 dev_audio_codec_init(cfg, cfg_size, handle)
+    
+    BM->>BM: s_manager_initialized = true
+    BM->>BM: ref_count 引用计数管理
 ```
 
 ### 4.3 引用计数机制
@@ -530,51 +524,36 @@ esp_board_device_deinit("audio_dac")
     }
 ```
 
----
+***
 
 ## 5. 用户使用设备的方式
 
 ### 5.1 典型使用流程
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     用户使用设备流程                              │
-└─────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
-│ Step 1: 调用 esp_board_manager_init()                           │
-│         (在 app_main 开始时调用一次)                             │
-└─────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ Step 2: 获取设备句柄                                             │
-│                                                                 │
-│  // 获取 LCD 句柄                                                │
-│  dev_display_lcd_handles_t *lcd_handle;                         │
-│  esp_board_manager_get_device_handle("display_lcd", &lcd_handle);│
-│                                                                 │
-│  // 获取音频 codec 句柄                                          │
-│  dev_audio_codec_handles_t *audio_handle;                       │
-│  esp_board_manager_get_device_handle("audio_dac", &audio_handle);│
-└─────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ Step 3: 使用设备标准 API                                         │
-│                                                                 │
-│  // LCD 使用 (通过 esp_lcd_panel_ops.h 接口)                     │
-│  esp_lcd_panel_draw_bitmap(lcd_handle->panel_handle, ...);       │
-│                                                                 │
-│  // 音频使用 (通过 esp_codec_dev.h 接口)                          │
-│  esp_codec_dev_open(audio_handle->codec_dev, &fs);               │
-│  esp_codec_dev_write(audio_handle->codec_dev, data, size);       │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A[Step 1: 调用 esp_board_manager_init]
+    A --> A1[在 app_main 开始时调用一次]
+    
+    A --> B[Step 2: 获取设备句柄]
+    B --> B1[获取 LCD 句柄]
+    B1 --> B2[dev_display_lcd_handles_t *lcd_handle]
+    B2 --> B3[esp_board_manager_get_device_handle\ndisplay_lcd lcd_handle]
+    B --> B4[获取音频 codec 句柄]
+    B4 --> B5[dev_audio_codec_handles_t *audio_handle]
+    B5 --> B6[esp_board_manager_get_device_handle\naudio_dac audio_handle]
+    
+    B --> C[Step 3: 使用设备标准 API]
+    C --> C1[LCD 使用]
+    C1 --> C2[esp_lcd_panel_draw_bitmap\nlcd_handle-panel_handle ...]
+    C --> C3[音频使用]
+    C3 --> C4[esp_codec_dev_open\naudio_handle-codec_dev fs]
+    C3 --> C5[esp_codec_dev_write\naudio_handle-codec_dev data size]
 ```
 
 ### 5.2 设备句柄结构示例
 
-#### dev_audio_codec_handles_t (音频设备)
+#### dev\_audio\_codec\_handles\_t (音频设备)
 
 ```c
 typedef struct {
@@ -587,7 +566,7 @@ typedef struct {
 } dev_audio_codec_handles_t;
 ```
 
-#### dev_display_lcd_handles_t (LCD 设备)
+#### dev\_display\_lcd\_handles\_t (LCD 设备)
 
 ```c
 typedef struct {
@@ -636,7 +615,7 @@ uint8_t buffer[4096];
 esp_codec_dev_read(adc_handle->codec_dev, buffer, sizeof(buffer));
 ```
 
----
+***
 
 ## 6. 同类型设备的处理机制
 
@@ -665,35 +644,19 @@ int dev_display_lcd_init(void *cfg, int cfg_size, void **device_handle)
 
 ### 6.2 LCD不同接口类型处理
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                display_lcd 设备子类型分发                        │
-└─────────────────────────────────────────────────────────────────┘
-
-                    board_devices.yaml 中定义：
-                    sub_type: dsi
-
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  esp_board_entry_find_desc("dsi")                               │
-│                                                                 │
-│  返回 esp_board_entry_desc_t {                                  │
-│      .init_func = dev_display_lcd_sub_dsi_init,                 │
-│      .deinit_func = dev_display_lcd_sub_dsi_deinit,             │
-│      ...                                                        │
-│  }                                                              │
-└─────────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  dev_display_lcd_sub_dsi_init()                                 │
-│                                                                 │
-│  1. 解析 DSI 特有配置 (bus_id, data_lanes, lane_bit_rate)      │
-│  2. 调用 esp_lcd_new_panel_dsi_bus() 创建 DSI 总线              │
-│  3. 调用 esp_lcd_new_panel_ek79007() 创建设备 (特定 IC 驱动)     │
-│  4. 返回 dev_display_lcd_handles_t 句柄                          │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A[board_devices.yaml] --> A1[sub_type: dsi]
+    A1 --> B[esp_board_entry_find_desc dsi]
+    B --> B1[返回 esp_board_entry_desc_t]
+    B1 --> B2[init_func = dev_display_lcd_sub_dsi_init]
+    B1 --> B3[deinit_func = dev_display_lcd_sub_dsi_deinit]
+    
+    B1 --> C[dev_display_lcd_sub_dsi_init]
+    C --> C1[解析 DSI 特有配置\nbus_id data_lanes lane_bit_rate]
+    C1 --> C2[调用 esp_lcd_new_panel_dsi_bus\n创建 DSI 总线]
+    C2 --> C3[调用 esp_lcd_new_panel_ek79007\n创建设备 特定IC驱动]
+    C3 --> C4[返回 dev_display_lcd_handles_t 句柄]
 ```
 
 ### 6.3 不同驱动IC的处理
@@ -789,13 +752,14 @@ devices:
       - name: i2s_audio_out
 ```
 
----
+***
 
 ## 7. LCD驱动IC查找与调用
 
 ### 7.1 驱动组件位置
 
 **EK79007 驱动组件**：
+
 ```
 managed_components/espressif__esp_lcd_ek79007/
 ├── esp_lcd_ek79007.c          # 驱动实现
@@ -804,6 +768,7 @@ managed_components/espressif__esp_lcd_ek79007/
 ```
 
 **核心API**：
+
 ```c
 esp_err_t esp_lcd_new_panel_ek79007(
     const esp_lcd_panel_io_handle_t io,
@@ -1008,10 +973,10 @@ void app_main(void)
 
 ### 7.7 支持的驱动IC列表
 
-| 驱动IC | 组件名称 | 头文件 | 初始化函数 |
-|--------|----------|--------|------------|
+| 驱动IC    | 组件名称                         | 头文件                 | 初始化函数                         |
+| ------- | ---------------------------- | ------------------- | ----------------------------- |
 | EK79007 | `espressif__esp_lcd_ek79007` | `esp_lcd_ek79007.h` | `esp_lcd_new_panel_ek79007()` |
-| ST7701 | `espressif__esp_lcd_st7701` | `esp_lcd_st7701.h` | `esp_lcd_new_panel_st7701()` |
+| ST7701  | `espressif__esp_lcd_st7701`  | `esp_lcd_st7701.h`  | `esp_lcd_new_panel_st7701()`  |
 | NT35521 | `espressif__esp_lcd_nt35521` | `esp_lcd_nt35521.h` | `esp_lcd_new_panel_nt35521()` |
 
 ### 7.8 ESP-LCD 组件层次与调用关系
@@ -1019,28 +984,34 @@ void app_main(void)
 #### ESP-LCD 组件的 5 层架构：
 
 **Level 4 - 用户应用层**
+
 - 通过 `esp_board_manager_get_device_handle()` 获取句柄
 - 直接调用 `esp_lcd_panel_*` API
 
 **Level 3 - Board Manager 设备层**
+
 - `dev_display_lcd_init()` 初始化
 - 内部调用 `esp_lcd_panel_reset/init/mirror/disp_on_off`
 - 返回 `dev_display_lcd_handles_t` 结构
 
 **Level 2.5 - 具体驱动IC包装层**
+
 - `esp_lcd_new_panel_ek79007()` 核心实现
 - **关键机制**：保存原始函数指针 + 重写/包装钩子函数
 - `panel_ek79007_init()`: 先发送IC初始化命令，再调用原始DPI init
 
 **Level 2 - ESP-LCD Panel IO 层**
+
 - `esp_lcd_panel_io_tx_param()` 发送IC命令
 - `esp_lcd_panel_io_tx_color()` 发送颜色数据
 
 **Level 1 - ESP-LCD 核心 Panel 层**
+
 - `esp_lcd_panel_t` 结构定义完整操作接口
 - 统一的 `esp_lcd_panel_*` API
 
 **Level 0 - 硬件驱动层**
+
 - DSI/MIPI、SPI、GPIO 驱动
 
 #### 关键点：Hook 机制（函数包装）
@@ -1064,72 +1035,48 @@ esp_lcd_new_panel_ek79007() {
 
 #### 用户实际调用时的流向：
 
-| API 调用 | 实际流向 |
-|---------|---------|
-| `esp_lcd_panel_draw_bitmap()` | 直接调用 core panel 层（未被 EK79007 重写） |
-| `esp_lcd_panel_mirror()` | → `panel_ek79007_mirror()` 钩子 → `esp_lcd_panel_io_tx_param()` |
-| `esp_lcd_panel_init()` | → `panel_ek79007_init()` 钩子 → 发送 IC 初始化命令 → 原始 DPI init |
+| API 调用                        | 实际流向                                                          |
+| ----------------------------- | ------------------------------------------------------------- |
+| `esp_lcd_panel_draw_bitmap()` | 直接调用 core panel 层（未被 EK79007 重写）                              |
+| `esp_lcd_panel_mirror()`      | → `panel_ek79007_mirror()` 钩子 → `esp_lcd_panel_io_tx_param()` |
+| `esp_lcd_panel_init()`        | → `panel_ek79007_init()` 钩子 → 发送 IC 初始化命令 → 原始 DPI init       |
 
----
+***
 
 ## 附录：架构图汇总
 
 ### A.1 整体架构图
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Application Layer                          │
-│                 (您的应用程序 / examples)                        │
-└─────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                  ESP Board Manager Layer                       │
-│                                                                 │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │    顶层API    │  │   设备管理层  │  │   外设管理层  │          │
-│  │ esp_board_   │  │ esp_board_   │  │ esp_board_   │          │
-│  │ manager_*.h  │  │ device_*.h   │  │ periph_*.h   │          │
-│  └──────────────┘  └──────────────┘  └──────────────┘          │
-│                                                                 │
-│  ┌────────────────────────────────────────────────────────────┐ │
-│  │                    配置文件 (boards/)                       │ │
-│  │  board_info.yaml / board_devices.yaml / board_peripherals │ │
-│  └────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     Device Implementations                      │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐               │
-│  │  dev_audio │  │  dev_       │  │   dev_      │               │
-│  │  _codec    │  │  display_   │  │   camera    │               │
-│  │             │  │  lcd       │  │             │               │
-│  └─────────────┘  └─────────────┘  └─────────────┘               │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐               │
-│  │  dev_fs_   │  │  dev_       │  │   dev_      │               │
-│  │  fat       │  │  button     │  │   gpio_ctrl │               │
-│  └─────────────┘  └─────────────┘  └─────────────┘               │
-└─────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                   Peripheral Implementations                    │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐               │
-│  │  periph_   │  │  periph_    │  │  periph_    │               │
-│  │  i2c       │  │  i2s        │  │  spi        │               │
-│  └─────────────┘  └─────────────┘  └─────────────┘               │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐               │
-│  │  periph_   │  │  periph_    │  │  periph_    │               │
-│  │  gpio      │  │  ledc       │  │  dsi        │               │
-│  └─────────────┘  └─────────────┘  └─────────────┘               │
-└─────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      ESP-IDF Drivers                           │
-│         driver/gpio.h / driver/i2c.h / driver/spi.h ...        │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    A[Application Layer\n您的应用程序 / examples] --> B[ESP Board Manager Layer]
+    
+    B --> B1[顶层API\nesp_board_manager_*.h]
+    B --> B2[设备管理层\nesp_board_device_*.h]
+    B --> B3[外设管理层\nesp_board_periph_*.h]
+    B --> B4[配置文件 boards/\nboard_info.yaml\nboard_devices.yaml\nboard_peripherals.yaml]
+    
+    B --> C[Device Implementations]
+    C --> C1[dev_audio_codec]
+    C --> C2[dev_display_lcd]
+    C --> C3[dev_camera]
+    C --> C4[dev_fs_fat]
+    C --> C5[dev_button]
+    C --> C6[dev_gpio_ctrl]
+    
+    B --> D[Peripheral Implementations]
+    D --> D1[periph_i2c]
+    D --> D2[periph_i2s]
+    D --> D3[periph_spi]
+    D --> D4[periph_gpio]
+    D --> D5[periph_ledc]
+    D --> D6[periph_dsi]
+    
+    C --> E[ESP-IDF Drivers]
+    D --> E
+    E --> E1[driver/gpio.h]
+    E --> E2[driver/i2c.h]
+    E --> E3[driver/spi.h]
 ```
 
 ### A.2 数据流图
@@ -1153,3 +1100,4 @@ esp_lcd_new_panel_ek79007() {
     ├──────────────────────────────────────────────────────────────────▶
     │
 ```
+

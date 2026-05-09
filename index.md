@@ -221,93 +221,139 @@ typedef esp_err_t (*esp_board_periph_deinit_func)(void *periph_handle);
 
 ***
 
-
 ### 2.5 esp_board_entry 静态注册机制
 
-`esp_board_entry.h` 是 ESP Board Manager 的**静态注册核心机制**，通过链接器段（Linker Section）实现设备/外设的自动发现和注册。
+`esp_board_entry.h` 提供了一套**静态注册机制**，核心用途是实现设备/外设的**自动发现和子类型分发**。
 
-#### 2.5.1 核心数据结构
+#### 2.5.1 核心用途
+
+**1. 设备子类型分发**
+
+允许同一种设备类型（如 `display_lcd`）支持多种接口实现（DSI、SPI、RGB），通过 `sub_type` 字段动态选择：
+
+```mermaid
+graph TD
+    A[设备类型: display_lcd] --> B[sub_type: dsi]
+    A --> C[sub_type: spi]
+    A --> D[sub_type: rgb]
+    
+    B --> B1[dev_display_lcd_sub_dsi_init]
+    C --> C1[dev_display_lcd_sub_spi_init]
+    D --> D1[dev_display_lcd_sub_rgb_init]
+```
+
+**2. 配置驱动的设备实例化**
+
+通过 YAML 配置中的名称自动找到对应的实现，无需手动注册：
+
+```yaml
+# board_devices.yaml
+devices:
+  - name: lcd_panel
+    type: display_lcd
+    sub_type: dsi  # 通过此字段选择具体实现
+```
+
+#### 2.5.2 实际调用流程
+
+```mermaid
+flowchart TD
+    A[esp_board_manager_init] --> B[esp_board_device_init_all]
+    B --> C[遍历设备列表]
+    C --> D{设备类型判断}
+    D -->|type=display_lcd| E[dev_display_lcd_init]
+    E --> F[解析 sub_type]
+    F --> G[esp_board_entry_find_desc]
+    G --> H{查找结果}
+    H -->|sub_type=dsi| I[dev_display_lcd_sub_dsi_init]
+    H -->|sub_type=spi| J[dev_display_lcd_sub_spi_init]
+```
+
+**调用链示例**：
+
+| 步骤 | 函数 | 说明 |
+|------|------|------|
+| 1 | `dev_display_lcd_init` | LCD 设备主入口 |
+| 2 | `esp_board_entry_find_desc("dsi")` | 根据 sub_type 查找实现 |
+| 3 | `dev_display_lcd_sub_dsi_init` | DSI 接口具体实现 |
+
+#### 2.5.3 典型应用场景
+
+**场景1：同设备多接口支持**
+
+```c
+// DSI 接口实现
+ESP_BOARD_ENTRY_IMPLEMENT(dsi, dev_display_lcd_sub_dsi_init, dev_display_lcd_sub_dsi_deinit);
+
+// SPI 接口实现
+ESP_BOARD_ENTRY_IMPLEMENT(spi, dev_display_lcd_sub_spi_init, dev_display_lcd_sub_spi_deinit);
+```
+
+**场景2：摄像头设备适配**
+
+```c
+// SPI 摄像头
+ESP_BOARD_ENTRY_IMPLEMENT(camera_spi, dev_camera_sub_spi_init, dev_camera_sub_spi_deinit);
+
+// MIPI 摄像头
+ESP_BOARD_ENTRY_IMPLEMENT(camera_mipi, dev_camera_sub_mipi_init, dev_camera_sub_mipi_deinit);
+```
+
+#### 2.5.4 设计优势
+
+| 优势 | 说明 |
+|------|------|
+| **配置驱动** | 修改 YAML 即可切换接口实现，无需改代码 |
+| **零运行时注册** | 编译期完成注册，无需调用注册函数 |
+| **模块化扩展** | 新增接口只需添加 `.c` 文件和注册宏 |
+| **编译优化** | 未使用的实现可被链接器自动丢弃 |
+| **类型安全** | 编译期检查函数签名 |
+
+#### 2.5.5 核心数据结构
 
 ```c
 typedef struct {
-    const char                     *entry_name;  /*!< 条目名称（必须匹配YAML配置）*/
+    const char                     *entry_name;  /*!< 条目名称（匹配 YAML 的 sub_type）*/
     esp_board_entry_init_func_t    init_func;    /*!< 初始化函数指针 */
     esp_board_entry_deinit_func_t  deinit_func;  /*!< 去初始化函数指针 */
 } esp_board_entry_desc_t;
 ```
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `entry_name` | `const char*` | 条目名称，必须与 YAML 配置中的 `name` 字段匹配 |
-| `init_func` | `esp_board_entry_init_func_t` | 初始化函数指针 |
-| `deinit_func` | `esp_board_entry_deinit_func_t` | 去初始化函数指针 |
+#### 2.5.6 注册宏与查找函数
 
-#### 2.5.2 函数指针类型
-
-```c
-// 初始化函数类型
-typedef int (*esp_board_entry_init_func_t)(void *config, int cfg_size, void **device_handle);
-
-// 去初始化函数类型
-typedef int (*esp_board_entry_deinit_func_t)(void *device_handle);
-```
-
-#### 2.5.3 静态注册宏
+**注册宏**：
 
 ```c
 #define ESP_BOARD_ENTRY_IMPLEMENT(name, init_func_entry, deinit_func_entry)     static const esp_board_entry_desc_t __attribute__((section(".esp_board_entries_desc"), used))     esp_board_entry_##name = {         .entry_name = #name,         .init_func = init_func_entry,         .deinit_func = deinit_func_entry     }
 ```
 
-**关键技术点：**
-- `__attribute__((section(".esp_board_entries_desc")))`：将结构体放入特殊的链接器段
-- `used` 属性：确保编译器不会优化掉未直接引用的变量
-- `#name`：字符串化宏参数
+**查找函数**：
 
-#### 2.5.4 注册机制工作原理
+```c
+// 通过名称查找注册的条目
+static inline const esp_board_entry_desc_t *esp_board_entry_find_desc(const char *entry_name);
+
+// 列出所有已注册的条目（调试用）
+static inline void esp_board_entry_list_all(void);
+```
+
+#### 2.5.7 工作原理简述
 
 ```mermaid
 flowchart TD
-    A[编译阶段] --> B[每个设备实现文件]
-    B --> C[ESP_BOARD_ENTRY_IMPLEMENT宏]
-    C --> D[生成esp_board_entry_desc_t结构体]
-    D --> E[放入.esp_board_entries_desc段]
+    A[编译阶段] --> B[每个实现文件调用宏]
+    B --> C[生成描述符放入链接器段]
     
-    F[链接阶段] --> G[链接器合并所有段]
-    G --> H[生成_esp_board_entries_array_start/end符号]
+    D[链接阶段] --> E[链接器合并所有段]
+    E --> F[生成起止符号]
     
-    I[运行阶段] --> J[esp_board_entry_find_desc]
-    J --> K[遍历_start到_end]
-    K --> L[字符串匹配查找]
+    G[运行阶段] --> H[通过符号遍历查找]
 ```
 
-#### 2.5.5 查找和遍历函数
+该机制利用**链接器段技术**，在编译期将所有设备实现注册到特殊段中，运行时通过遍历该段实现自动发现。
 
-```c
-// 通过名称查找条目
-static inline const esp_board_entry_desc_t *esp_board_entry_find_desc(const char *entry_name)
-// 列出所有注册的条目
-static inline void esp_board_entry_list_all(void)
-```
+***
 
-#### 2.5.6 典型使用示例
-
-```c
-// 设备实现文件中注册
-ESP_BOARD_ENTRY_IMPLEMENT(display_lcd, dev_display_lcd_init, dev_display_lcd_deinit);
-
-// 在 YAML 配置中引用
-// board_devices.yaml
-devices:
-  - name: display_lcd
-    type: display_lcd
-    ...
-```
-
-**设计优势：**
-1. **零运行时开销**：注册发生在编译/链接阶段
-2. **自动发现**：无需手动调用注册函数
-3. **类型安全**：编译期检查函数签名
-4. **可扩展性**：新增设备只需添加实现文件
 
 ## 3. 顶层API管理机制
 

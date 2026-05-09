@@ -221,6 +221,94 @@ typedef esp_err_t (*esp_board_periph_deinit_func)(void *periph_handle);
 
 ***
 
+
+### 2.5 esp_board_entry 静态注册机制
+
+`esp_board_entry.h` 是 ESP Board Manager 的**静态注册核心机制**，通过链接器段（Linker Section）实现设备/外设的自动发现和注册。
+
+#### 2.5.1 核心数据结构
+
+```c
+typedef struct {
+    const char                     *entry_name;  /*!< 条目名称（必须匹配YAML配置）*/
+    esp_board_entry_init_func_t    init_func;    /*!< 初始化函数指针 */
+    esp_board_entry_deinit_func_t  deinit_func;  /*!< 去初始化函数指针 */
+} esp_board_entry_desc_t;
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `entry_name` | `const char*` | 条目名称，必须与 YAML 配置中的 `name` 字段匹配 |
+| `init_func` | `esp_board_entry_init_func_t` | 初始化函数指针 |
+| `deinit_func` | `esp_board_entry_deinit_func_t` | 去初始化函数指针 |
+
+#### 2.5.2 函数指针类型
+
+```c
+// 初始化函数类型
+typedef int (*esp_board_entry_init_func_t)(void *config, int cfg_size, void **device_handle);
+
+// 去初始化函数类型
+typedef int (*esp_board_entry_deinit_func_t)(void *device_handle);
+```
+
+#### 2.5.3 静态注册宏
+
+```c
+#define ESP_BOARD_ENTRY_IMPLEMENT(name, init_func_entry, deinit_func_entry)     static const esp_board_entry_desc_t __attribute__((section(".esp_board_entries_desc"), used))     esp_board_entry_##name = {         .entry_name = #name,         .init_func = init_func_entry,         .deinit_func = deinit_func_entry     }
+```
+
+**关键技术点：**
+- `__attribute__((section(".esp_board_entries_desc")))`：将结构体放入特殊的链接器段
+- `used` 属性：确保编译器不会优化掉未直接引用的变量
+- `#name`：字符串化宏参数
+
+#### 2.5.4 注册机制工作原理
+
+```mermaid
+flowchart TD
+    A[编译阶段] --> B[每个设备实现文件]
+    B --> C[ESP_BOARD_ENTRY_IMPLEMENT宏]
+    C --> D[生成esp_board_entry_desc_t结构体]
+    D --> E[放入.esp_board_entries_desc段]
+    
+    F[链接阶段] --> G[链接器合并所有段]
+    G --> H[生成_esp_board_entries_array_start/end符号]
+    
+    I[运行阶段] --> J[esp_board_entry_find_desc]
+    J --> K[遍历_start到_end]
+    K --> L[字符串匹配查找]
+```
+
+#### 2.5.5 查找和遍历函数
+
+```c
+// 通过名称查找条目
+static inline const esp_board_entry_desc_t *esp_board_entry_find_desc(const char *entry_name)
+// 列出所有注册的条目
+static inline void esp_board_entry_list_all(void)
+```
+
+#### 2.5.6 典型使用示例
+
+```c
+// 设备实现文件中注册
+ESP_BOARD_ENTRY_IMPLEMENT(display_lcd, dev_display_lcd_init, dev_display_lcd_deinit);
+
+// 在 YAML 配置中引用
+// board_devices.yaml
+devices:
+  - name: display_lcd
+    type: display_lcd
+    ...
+```
+
+**设计优势：**
+1. **零运行时开销**：注册发生在编译/链接阶段
+2. **自动发现**：无需手动调用注册函数
+3. **类型安全**：编译期检查函数签名
+4. **可扩展性**：新增设备只需添加实现文件
+
 ## 3. 顶层API管理机制
 
 ### 3.1 主要API函数

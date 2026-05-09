@@ -87,10 +87,10 @@ esp_board_periph.h]
 ```mermaid
 flowchart TD
     A[boards/&lt;board_name&gt;/]
-    A --> A1[board_info.yaml\n板级基本信息]
-    A --> A2[board_peripherals.yaml\n外设配置]
-    A --> A3[board_devices.yaml\n设备配置]
-    A --> A4[setup_device.c\n可选自定义初始化代码]
+    A --> A1[board_info.yaml 板级基本信息]
+    A --> A2[board_peripherals.yaml 外设配置]
+    A --> A3[board_devices.yaml 设备配置]
+    A --> A4[setup_device.c 可选自定义初始化代码]
     A -->|输出| B[YAML 配置文件]
 ```
 
@@ -99,9 +99,9 @@ flowchart TD
 ```mermaid
 flowchart TD
     A[YAML 配置文件] --> B[gen_bmgr_config_codes.py]
-    B --> B1[device_parser.py\n解析设备配置]
-    B --> B2[peripheral_parser.py\n解析外设配置]
-    B --> B3[config_generator.py\n生成代码]
+    B --> B1[device_parser.py 解析设备配置]
+    B --> B2[peripheral_parser.py 解析外设配置]
+    B --> B3[config_generator.py 生成代码]
     B --> C[生成中间产物]
     C --> C1[解析 YAML 配置]
     C --> C2[生成 C 结构体]
@@ -113,9 +113,9 @@ flowchart TD
 ```mermaid
 flowchart TD
     A[生成的头文件] --> B[编译阶段]
-    B --> B1[gen_board_device_handles.c\n设备注册表]
-    B --> B2[gen_board_periph_handles.c\n外设注册表]
-    B --> B3[board_info.c\n板级信息]
+    B --> B1[gen_board_device_handles.c 设备注册表]
+    B --> B2[gen_board_periph_handles.c 外设注册表]
+    B --> B3[board_info.c 板级信息]
     B --> C[最终输出]
     C --> C1[设备句柄数组]
     C --> C2[外设句柄数组]
@@ -335,8 +335,8 @@ flowchart TD
     A[esp_board_manager_init] --> B[esp_board_periph_init_all]
     B --> B1[遍历 g_esp_board_peripherals]
     B1 --> B2[esp_board_periph_init name]
-    B2 --> B3[查找外设描述符\n通过name在链表中查找]
-    B3 --> B4[查找外设条目\n通过type+role匹配init函数]
+    B2 --> B3[查找外设描述符 通过name在链表中查找]
+    B3 --> B4[查找外设条目 通过type+role匹配init函数]
     B4 --> B5[调用 init cfg cfg_size handle]
     B5 --> B6[创建外设列表节点，加入链表]
     B6 --> B7[ref_count++]
@@ -344,16 +344,16 @@ flowchart TD
     B7 --> C[esp_board_device_init_all]
     C --> C1[遍历 g_esp_board_devices]
     C1 --> C2[esp_board_device_init name]
-    C2 --> C3[查找设备描述符\n通过name在链表中查找]
-    C3 --> C4[检查电源依赖\npower_ctrl_device]
+    C2 --> C3[查找设备描述符 通过name在链表中查找]
+    C3 --> C4[检查电源依赖 power_ctrl_device]
     C4 --> C5[调用 init cfg cfg_size handle]
     C5 --> C6[创建设备列表节点，加入链表]
     C6 --> C7[ref_count++]
     
     C7 --> D[初始化完成]
     D --> D1[用户获取句柄]
-    D1 --> D2[esp_board_manager_get_device_handle\naudio_dac handle]
-    D1 --> D3[esp_board_manager_get_periph_handle\ni2c_master handle]
+    D1 --> D2[esp_board_manager_get_device_handle audio_dac handle]
+    D1 --> D3[esp_board_manager_get_periph_handle i2c_master handle]
 ```
 
 ***
@@ -538,17 +538,17 @@ flowchart TD
     A --> B[Step 2: 获取设备句柄]
     B --> B1[获取 LCD 句柄]
     B1 --> B2[dev_display_lcd_handles_t *lcd_handle]
-    B2 --> B3[esp_board_manager_get_device_handle\ndisplay_lcd lcd_handle]
+    B2 --> B3[esp_board_manager_get_device_handle display_lcd lcd_handle]
     B --> B4[获取音频 codec 句柄]
     B4 --> B5[dev_audio_codec_handles_t *audio_handle]
-    B5 --> B6[esp_board_manager_get_device_handle\naudio_dac audio_handle]
+    B5 --> B6[esp_board_manager_get_device_handle audio_dac audio_handle]
     
     B --> C[Step 3: 使用设备标准 API]
     C --> C1[LCD 使用]
-    C1 --> C2[esp_lcd_panel_draw_bitmap\nlcd_handle-panel_handle ...]
+    C1 --> C2[esp_lcd_panel_draw_bitmap lcd_handle-panel_handle ...]
     C --> C3[音频使用]
-    C3 --> C4[esp_codec_dev_open\naudio_handle-codec_dev fs]
-    C3 --> C5[esp_codec_dev_write\naudio_handle-codec_dev data size]
+    C3 --> C4[esp_codec_dev_open audio_handle-codec_dev fs]
+    C3 --> C5[esp_codec_dev_write audio_handle-codec_dev data size]
 ```
 
 ### 5.2 设备句柄结构示例
@@ -653,9 +653,9 @@ flowchart TD
     B1 --> B3[deinit_func = dev_display_lcd_sub_dsi_deinit]
     
     B1 --> C[dev_display_lcd_sub_dsi_init]
-    C --> C1[解析 DSI 特有配置\nbus_id data_lanes lane_bit_rate]
-    C1 --> C2[调用 esp_lcd_new_panel_dsi_bus\n创建 DSI 总线]
-    C2 --> C3[调用 esp_lcd_new_panel_ek79007\n创建设备 特定IC驱动]
+    C --> C1[解析 DSI 特有配置 bus_id data_lanes lane_bit_rate]
+    C1 --> C2[调用 esp_lcd_new_panel_dsi_bus 创建 DSI 总线]
+    C2 --> C3[调用 esp_lcd_new_panel_ek79007 创建设备 特定IC驱动]
     C3 --> C4[返回 dev_display_lcd_handles_t 句柄]
 ```
 
@@ -754,307 +754,18 @@ devices:
 
 ***
 
-## 7. LCD驱动IC查找与调用
+## 7. 附录：架构图汇总
 
-### 7.1 驱动组件位置
-
-**EK79007 驱动组件**：
-
-```
-managed_components/espressif__esp_lcd_ek79007/
-├── esp_lcd_ek79007.c          # 驱动实现
-├── include/esp_lcd_ek79007.h   # 驱动头文件
-└── test_apps/                  # 测试程序
-```
-
-**核心API**：
-
-```c
-esp_err_t esp_lcd_new_panel_ek79007(
-    const esp_lcd_panel_io_handle_t io,
-    const esp_lcd_panel_dev_config_t *panel_dev_config,
-    esp_lcd_panel_handle_t *ret_panel
-);
-```
-
-### 7.2 驱动调用流程
-
-```
-用户应用
-    │
-    ▼
-esp_board_manager_init()
-    │
-    └─> dev_display_lcd_init()
-            │
-            │ 根据 sub_type 分发
-            ▼
-        dev_display_lcd_sub_dsi_init()  [DSI接口]
-            │
-            │ 调用工厂函数
-            ▼
-        lcd_dsi_panel_factory_entry_t()
-            │
-            │ 根据 chip 字段选择驱动
-            ▼
-        esp_lcd_new_panel_ek79007()  ← 最终调用驱动
-```
-
-### 7.3 配置文件中的驱动选择
-
-在 `board_devices.yaml` 中配置：
-
-```yaml
-devices:
-  - name: display_lcd
-    chip: ek79007           # ← 选择驱动IC
-    type: display_lcd
-    sub_type: dsi           # ← 选择接口类型
-    config:
-      reset_gpio_num: 27
-      bits_per_pixel: 24
-      sub_cfg:
-        dsi:
-          ldo_name: ldo_mipi
-          dsi_name: dsi_display
-          dpi_config:
-            dpi_clock_freq_mhz: 48
-            video_timing:
-              h_size: 1024
-              v_size: 600
-```
-
-### 7.4 工厂函数实现
-
-```c
-esp_err_t lcd_dsi_panel_factory_entry_t(
-    esp_lcd_dsi_bus_handle_t dsi_handle,
-    dev_display_lcd_config_t *lcd_cfg,
-    dev_display_lcd_handles_t *lcd_handles
-)
-{
-    // 根据 chip 字段选择不同驱动
-    if (strcmp(lcd_cfg->chip, "ek79007") == 0) {
-        // EK79007 驱动配置
-        ek79007_vendor_config_t vendor_config = {
-            .mipi_config = {
-                .dsi_bus = dsi_handle,
-                .dpi_config = &lcd_cfg->sub_cfg.dsi.dpi_config,
-            },
-        };
-
-        esp_lcd_panel_dev_config_t lcd_dev_config = {
-            .reset_gpio_num = lcd_cfg->sub_cfg.dsi.reset_gpio_num,
-            .bits_per_pixel = lcd_cfg->bits_per_pixel,
-            .vendor_config = &vendor_config,
-        };
-
-        return esp_lcd_new_panel_ek79007(
-            lcd_handles->io_handle,
-            &lcd_dev_config,
-            &lcd_handles->panel_handle
-        );
-    }
-    else if (strcmp(lcd_cfg->chip, "st7701") == 0) {
-        // ST7701 驱动配置 (需要添加 st7701 驱动组件)
-        // st7701_vendor_config_t vendor_config = {...};
-        // return esp_lcd_new_panel_st7701(...);
-    }
-
-    return ESP_ERR_NOT_SUPPORTED;
-}
-```
-
-### 7.5 添加新驱动IC的步骤
-
-**步骤 1**：添加驱动组件依赖到 `idf_component.yml`
-
-```yaml
-dependencies:
-  espressif/esp_lcd_ek79007: "^1.0.0"
-  # espressif/esp_lcd_st7701: "^1.0.0"  # 如果需要 ST7701
-```
-
-**步骤 2**：在 `setup_device.c` 中添加工厂函数分支
-
-```c
-#include "esp_lcd_st7701.h"  // 添加新驱动头文件
-
-esp_err_t lcd_dsi_panel_factory_entry_t(...)
-{
-    if (strcmp(lcd_cfg->chip, "ek79007") == 0) {
-        // EK79007 处理
-    }
-    else if (strcmp(lcd_cfg->chip, "st7701") == 0) {
-        // ST7701 处理
-        st7701_vendor_config_t vendor_config = {
-            .mipi_config = {
-                .dsi_bus = dsi_handle,
-                .dpi_config = &lcd_cfg->sub_cfg.dsi.dpi_config,
-            },
-        };
-
-        esp_lcd_panel_dev_config_t lcd_dev_config = {
-            .reset_gpio_num = lcd_cfg->sub_cfg.dsi.reset_gpio_num,
-            .bits_per_pixel = lcd_cfg->bits_per_pixel,
-            .vendor_config = &vendor_config,
-        };
-
-        return esp_lcd_new_panel_st7701(
-            lcd_handles->io_handle,
-            &lcd_dev_config,
-            &lcd_handles->panel_handle
-        );
-    }
-}
-```
-
-**步骤 3**：在 `board_devices.yaml` 中配置
-
-```yaml
-devices:
-  - name: display_lcd
-    chip: st7701           # 切换为 ST7701
-    type: display_lcd
-    sub_type: dsi
-    # ... 其他配置
-```
-
-### 7.6 直接调用驱动
-
-如果需要直接调用驱动而不通过 board manager：
-
-```c
-#include "esp_lcd_ek79007.h"
-#include "esp_lcd_mipi_dsi.h"
-
-void app_main(void)
-{
-    // 1. 创建 DSI 总线
-    esp_lcd_dsi_bus_handle_t dsi_bus;
-    esp_lcd_dsi_bus_config_t dsi_config = EK79007_PANEL_BUS_DSI_2CH_CONFIG();
-    esp_lcd_new_dsi_bus(&dsi_config, &dsi_bus);
-
-    // 2. 创建 DBI IO
-    esp_lcd_panel_io_handle_t io_handle;
-    esp_lcd_dbi_io_config_t dbi_config = EK79007_PANEL_IO_DBI_CONFIG();
-    esp_lcd_new_panel_io_dbi(dsi_bus, &dbi_config, &io_handle);
-
-    // 3. 配置驱动
-    ek79007_vendor_config_t vendor_config = {
-        .mipi_config = {
-            .dsi_bus = dsi_bus,
-            .dpi_config = &(esp_lcd_dpi_panel_config_t){
-                .dpi_clock_freq_mhz = 52,
-                .pixel_format = LCD_PIXEL_FORMAT_RGB888,
-                .video_timing = {
-                    .h_size = 1024,
-                    .v_size = 600,
-                },
-            },
-        },
-    };
-
-    esp_lcd_panel_dev_config_t panel_config = {
-        .reset_gpio_num = 27,
-        .bits_per_pixel = 24,
-        .vendor_config = &vendor_config,
-    };
-
-    // 4. 创建面板
-    esp_lcd_panel_handle_t panel_handle;
-    esp_lcd_new_panel_ek79007(io_handle, &panel_config, &panel_handle);
-
-    // 5. 初始化面板
-    esp_lcd_panel_init(panel_handle);
-    esp_lcd_panel_disp_on_off(panel_handle, true);
-}
-```
-
-### 7.7 支持的驱动IC列表
-
-| 驱动IC    | 组件名称                         | 头文件                 | 初始化函数                         |
-| ------- | ---------------------------- | ------------------- | ----------------------------- |
-| EK79007 | `espressif__esp_lcd_ek79007` | `esp_lcd_ek79007.h` | `esp_lcd_new_panel_ek79007()` |
-| ST7701  | `espressif__esp_lcd_st7701`  | `esp_lcd_st7701.h`  | `esp_lcd_new_panel_st7701()`  |
-| NT35521 | `espressif__esp_lcd_nt35521` | `esp_lcd_nt35521.h` | `esp_lcd_new_panel_nt35521()` |
-
-### 7.8 ESP-LCD 组件层次与调用关系
-
-#### ESP-LCD 组件的 5 层架构：
-
-**Level 4 - 用户应用层**
-
-- 通过 `esp_board_manager_get_device_handle()` 获取句柄
-- 直接调用 `esp_lcd_panel_*` API
-
-**Level 3 - Board Manager 设备层**
-
-- `dev_display_lcd_init()` 初始化
-- 内部调用 `esp_lcd_panel_reset/init/mirror/disp_on_off`
-- 返回 `dev_display_lcd_handles_t` 结构
-
-**Level 2.5 - 具体驱动IC包装层**
-
-- `esp_lcd_new_panel_ek79007()` 核心实现
-- **关键机制**：保存原始函数指针 + 重写/包装钩子函数
-- `panel_ek79007_init()`: 先发送IC初始化命令，再调用原始DPI init
-
-**Level 2 - ESP-LCD Panel IO 层**
-
-- `esp_lcd_panel_io_tx_param()` 发送IC命令
-- `esp_lcd_panel_io_tx_color()` 发送颜色数据
-
-**Level 1 - ESP-LCD 核心 Panel 层**
-
-- `esp_lcd_panel_t` 结构定义完整操作接口
-- 统一的 `esp_lcd_panel_*` API
-
-**Level 0 - 硬件驱动层**
-
-- DSI/MIPI、SPI、GPIO 驱动
-
-#### 关键点：Hook 机制（函数包装）
-
-```c
-// EK79007 驱动内部实现
-esp_lcd_new_panel_ek79007() {
-    // 1. 先创建基础 DPI 面板
-    esp_lcd_new_panel_dpi(..., ret_panel);
-
-    // 2. 保存原始函数指针
-    ek79007->del = (*ret_panel)->del;
-    ek79007->init = (*ret_panel)->init;
-
-    // 3. 重写钩子函数（Wrapper）
-    (*ret_panel)->del = panel_ek79007_del;   // 覆盖
-    (*ret_panel)->init = panel_ek79007_init;  // 覆盖
-    (*ret_panel)->user_data = ek79007;        // 私有数据
-}
-```
-
-#### 用户实际调用时的流向：
-
-| API 调用                        | 实际流向                                                          |
-| ----------------------------- | ------------------------------------------------------------- |
-| `esp_lcd_panel_draw_bitmap()` | 直接调用 core panel 层（未被 EK79007 重写）                              |
-| `esp_lcd_panel_mirror()`      | → `panel_ek79007_mirror()` 钩子 → `esp_lcd_panel_io_tx_param()` |
-| `esp_lcd_panel_init()`        | → `panel_ek79007_init()` 钩子 → 发送 IC 初始化命令 → 原始 DPI init       |
-
-***
-
-## 附录：架构图汇总
-
-### A.1 整体架构图
+### 7.1 整体架构图
 
 ```mermaid
 graph TD
-    A[Application Layer\n您的应用程序 / examples] --> B[ESP Board Manager Layer]
+    A[Application Layer 您的应用程序 / examples] --> B[ESP Board Manager Layer]
     
-    B --> B1[顶层API\nesp_board_manager_*.h]
-    B --> B2[设备管理层\nesp_board_device_*.h]
-    B --> B3[外设管理层\nesp_board_periph_*.h]
-    B --> B4[配置文件 boards/\nboard_info.yaml\nboard_devices.yaml\nboard_peripherals.yaml]
+    B --> B1[顶层API esp_board_manager_*.h]
+    B --> B2[设备管理层 esp_board_device_*.h]
+    B --> B3[外设管理层 esp_board_periph_*.h]
+    B --> B4[配置文件 boards/ board_info.yaml board_devices.yaml board_peripherals.yaml]
     
     B --> C[Device Implementations]
     C --> C1[dev_audio_codec]
@@ -1079,7 +790,7 @@ graph TD
     E --> E3[driver/spi.h]
 ```
 
-### A.2 数据流图
+### 7.2 数据流图
 
 ```
 用户应用
